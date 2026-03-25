@@ -1,0 +1,11 @@
+{
+  "name": "openclaw-expense-manager",
+  "version": "1.0.0",
+  "description": "OpenClaw skill for expense tracking via WhatsApp",
+  "main": "index.js",
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "googleapis": "^140.0.0",
+    "openai": "^4.56.0"
+  }
+}

@@ -1,6 +1,6 @@
 # OpenClaw Expense Manager
 
-This project is an OpenClaw skill that allows you to track expenses via WhatsApp. It uses a **light default stack** on Ollama: **`kimi-k2.5:cloud`** for the agent (text, tools, skills) and **`llava:7b`** for receipt images via `parse_receipt.js` (override with `OLLAMA_VISION_MODEL` in `.env`). Optional: use a heavier vision model such as **`glm-4.7-flash:latest`** for better OCR at the cost of speed.
+This project is an OpenClaw skill that allows you to track expenses via WhatsApp. It uses a **light default stack** on Ollama: **`kimi-k2.5:cloud`** for the agent (text, tools, skills) and **Ollama Cloud** for receipt images via `parse_receipt.js` (**`https://ollama.com/v1`**, **`OLLAMA_API_KEY`**, default vision **`qwen3-vl:8b`**—see [Receipt OCR (local vs Ollama Cloud)](#receipt-ocr-local-vs-ollama-cloud)). To run receipt OCR against **local** Ollama instead, set **`OLLAMA_BASE_URL=http://localhost:11434/v1`** and a local vision model (e.g. **`llava:7b`** or **`glm-4.7-flash:latest`** after `ollama pull`).
 
 **Storage:** By default expenses are saved to a **local CSV file** (`expenses.csv` in the skill directory). If you want a specific expense (or all) in Google Sheets, include **storage=cloud** in your message (e.g. "Lunch 50000 storage=cloud"); you must then complete the Google Sheets setup and run `node setup_sheet.js` once.
 
@@ -8,9 +8,9 @@ This project is an OpenClaw skill that allows you to track expenses via WhatsApp
 
 1.  **OpenClaw**: Installed and running. See **Installing OpenClaw** below.
 2.  **Node.js**: Installed (v18+ recommended; OpenClaw requires Node 22+).
-3.  **Ollama**: Installed and running locally.
+3.  **Ollama**: Receipt OCR defaults to **Ollama Cloud**; add **`OLLAMA_API_KEY`** from [ollama.com/settings/keys](https://ollama.com/settings/keys) to `.env` in this skill directory (see **Configuration**). No local GPU required for receipts unless you switch **`OLLAMA_BASE_URL`** to localhost.
 
-    For the receipt OCR vision model (local), pull:
+    For **local-only** receipt OCR, install Ollama, then pull a vision model:
 
     ```bash
     ollama pull llava:7b
@@ -18,9 +18,9 @@ This project is an OpenClaw skill that allows you to track expenses via WhatsApp
     # ollama pull glm-4.7-flash:latest
     ```
 
-    No API key required for local models.
+    Set **`OLLAMA_BASE_URL=http://localhost:11434/v1`** and **`OLLAMA_VISION_MODEL`** accordingly; no **`OLLAMA_API_KEY`** needed for localhost.
 
-    To use Ollama Cloud models (the default agent model `kimi-k2.5:cloud`), sign in once and then onboard in **Cloud + Local** mode:
+    To use Ollama Cloud models for the **OpenClaw agent** (e.g. `kimi-k2.5:cloud`), sign in once and onboard in **Cloud + Local** mode:
 
     ```bash
     ollama signin
@@ -71,7 +71,24 @@ Copy `.env.example` to `.env`:
 cp .env.example .env
 ```
 
-No API key is required for **local** Ollama runs. For **local CSV only** you do not need `SPREADSHEET_ID`. Optional: set `EXPENSES_CSV_PATH` to a path **under this skill directory** only (default: `expenses.csv`). If OpenClaw passes receipt images outside this folder, set `OPENCLAW_WORKSPACE` to your workspace path (see `.env.example`). If Ollama is on a non-default address, set `OLLAMA_BASE_URL` accordingly. For receipt OCR, **`OLLAMA_VISION_MODEL`** defaults to **`llava:7b`**; set it to **`glm-4.7-flash:latest`** (after `ollama pull`) if you want slower, often more accurate parsing. For Ollama Cloud models, ensure you completed `ollama signin` and selected **Cloud + Local** during `openclaw onboard`.
+Receipt OCR defaults to **`https://ollama.com/v1`**; you **must** set **`OLLAMA_API_KEY`** in `.env` or `parse_receipt.js` exits with an error (see the next subsection). **`OLLAMA_VISION_MODEL`** defaults to **`qwen3-vl:8b`**; override if your account uses another vision model. For **local CSV only** you do not need `SPREADSHEET_ID`. Optional: set `EXPENSES_CSV_PATH` to a path **under this skill directory** only (default: `expenses.csv`). If OpenClaw passes receipt images outside this folder, set `OPENCLAW_WORKSPACE` to your workspace path (see `.env.example`). For **local-only** receipt OCR, set **`OLLAMA_BASE_URL=http://localhost:11434/v1`** and e.g. **`OLLAMA_VISION_MODEL=llava:7b`**; the script uses the placeholder API key `ollama` when **`OLLAMA_API_KEY`** is unset against localhost. For the **OpenClaw agent** using Ollama Cloud text models, ensure you completed `ollama signin` and selected **Cloud + Local** during `openclaw onboard`.
+
+### Receipt OCR (local vs Ollama Cloud)
+
+`parse_receipt.js` uses the [OpenAI-compatible API](https://docs.ollama.com/api/openai-compatibility) against whatever **`OLLAMA_BASE_URL`** points to.
+
+| Mode | `OLLAMA_BASE_URL` | Auth | `OLLAMA_VISION_MODEL` |
+|------|-------------------|------|------------------------|
+| **Ollama Cloud (default)** | **`https://ollama.com/v1`** (omit env to use this) | **`OLLAMA_API_KEY`** required ([create a key](https://ollama.com/settings/keys); see [Authentication](https://docs.ollama.com/api/authentication)) | Default **`qwen3-vl:8b`**; override with any **vision-capable** model your account can run ([model library](https://ollama.com/search?c=cloud), [Vision](https://docs.ollama.com/capabilities/vision)). |
+| **Local** | **`http://localhost:11434/v1`** | Omit **`OLLAMA_API_KEY`** (script uses placeholder `ollama`) | e.g. **`llava:7b`** ( **`ollama pull llava:7b`** ) or **`glm-4.7-flash:latest`**. |
+
+Verify cloud receipt OCR from this directory after editing `.env`:
+
+```bash
+node parse_receipt.js /path/to/a/receipt.jpg
+```
+
+You should see a single JSON line on stdout (`item`, `price`, `date`). If `OLLAMA_BASE_URL` is `ollama.com` and **`OLLAMA_API_KEY`** is missing, the script exits immediately with a clear error.
 
 ### 3. Google Sheets (optional, for storage=cloud)
 
@@ -213,7 +230,7 @@ OpenClaw only appends to `expenses.csv` after the agent successfully runs `node 
    - If you send only an item (e.g. `Coffee`), the agent asks for the amount.
 
 4. **Log an expense with a receipt image**  
-   Send a photo of a receipt. The agent runs **`node parse_receipt.js`**; that script calls Ollama with the vision model from **`OLLAMA_VISION_MODEL`** (default **`llava:7b`**). It extracts item, price, and date (and converts to IDR if needed), then the agent logs with **`log_expense.js`**. Add **storage=cloud** in a follow-up or in the same chat if you want that receipt logged to Google Sheet.
+   Send a photo of a receipt. The agent runs **`node parse_receipt.js`**; that script calls Ollama’s OpenAI-compatible API at **`OLLAMA_BASE_URL`** (default **`https://ollama.com/v1`**) with **`OLLAMA_VISION_MODEL`** (default **`qwen3-vl:8b`**) and **`OLLAMA_API_KEY`** for cloud. For **local** Ollama, set **`OLLAMA_BASE_URL=http://localhost:11434/v1`** and a pulled vision model. It extracts item, price, and date (and converts to IDR if needed), then the agent logs with **`log_expense.js`**. Add **storage=cloud** in a follow-up or in the same chat if you want that receipt logged to Google Sheet.
 
 5. **Query past spending**  
    Ask in natural language, for example:

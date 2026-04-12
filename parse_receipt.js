@@ -3,12 +3,53 @@ const OpenAI = require('openai');
 const fs = require('fs');
 const { resolveAllowedImagePath } = require('./path_guard');
 
+/** Trailing slash helps the OpenAI client resolve paths consistently. */
+function normalizeOllamaBaseURL(raw) {
+  const trimmed = (raw || 'https://ollama.com/v1').trim();
+  try {
+    const u = new URL(trimmed);
+    if (
+      (u.hostname === 'ollama.com' || u.hostname.endsWith('.ollama.com')) &&
+      (u.pathname === '/' || u.pathname === '')
+    ) {
+      return `https://${u.hostname}/v1/`;
+    }
+    const href = u.href.replace(/\/+$/, '');
+    return `${href}/`;
+  } catch {
+    return 'https://ollama.com/v1/';
+  }
+}
+
+function isOllamaComHost(baseURL) {
+  try {
+    const u = new URL(baseURL);
+    return u.hostname === 'ollama.com' || u.hostname.endsWith('.ollama.com');
+  } catch {
+    return false;
+  }
+}
+
+const baseURL = normalizeOllamaBaseURL(process.env.OLLAMA_BASE_URL);
+const apiKeyFromEnv =
+  process.env.OLLAMA_API_KEY != null && String(process.env.OLLAMA_API_KEY).trim() !== ''
+    ? String(process.env.OLLAMA_API_KEY).trim()
+    : '';
+
+if (isOllamaComHost(baseURL) && !apiKeyFromEnv) {
+  console.error(
+    'OLLAMA_API_KEY is required when OLLAMA_BASE_URL points to ollama.com (Ollama Cloud).\n' +
+      'Create a key at https://ollama.com/settings/keys and set OLLAMA_API_KEY in .env in this skill directory.'
+  );
+  process.exit(1);
+}
+
 const openai = new OpenAI({
-  apiKey: 'ollama',
-  baseURL: process.env.OLLAMA_BASE_URL || 'http://localhost:11434/v1',
+  apiKey: apiKeyFromEnv || 'ollama',
+  baseURL,
 });
 
-const visionModel = process.env.OLLAMA_VISION_MODEL || 'llava:7b';
+const visionModel = process.env.OLLAMA_VISION_MODEL || 'qwen3-vl:8b';
 
 async function parseReceipt(imagePath) {
   try {

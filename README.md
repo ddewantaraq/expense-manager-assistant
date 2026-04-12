@@ -104,7 +104,7 @@ Only if you want to use **storage=cloud**:
 
 OpenClaw does not have a separate "create agent" screen. The **agent** is the default assistant that runs when you start the gateway; it loads skills from your workspace and from optional extra directories.
 
-**If this repo lives outside `~/.openclaw/workspace`** (typical when you clone to `~/Documents/projects/...`), OpenClaw **ignores** symlinks under `workspace/skills/` that point outside the workspace when **building the skill catalog** (security: paths must resolve inside the configured workspace root). You still register the project explicitly so the skill loads:
+**If this repo lives outside `~/.openclaw/workspace`** (typical when you clone to `~/Documents/projects/...`), register the skill with **`skills.load.extraDirs`** only. Do **not** add a symlink under `~/.openclaw/workspace/skills/` to this repo: OpenClaw treats paths that resolve outside the workspace root as unsafe and logs **`[skills] Skipping skill path that resolves outside its configured root`** once per run. **`extraDirs`** is the supported way to load this skill (`source: openclaw-extra`).
 
 Add to `~/.openclaw/openclaw.json` (adjust the path to match where you cloned this repo):
 
@@ -116,22 +116,9 @@ Add to `~/.openclaw/openclaw.json` (adjust the path to match where you cloned th
 }
 ```
 
-**Workspace path for `SKILL.md` reads:** The skill’s **`name` in `SKILL.md` is `expense_manager`** (underscore). Some OpenClaw tool paths resolve to:
+**If** a tool ever errors with **`ENOENT ... workspace/skills/expense_manager/SKILL.md`**, fix it by copying or moving the project **into** `~/.openclaw/workspace/skills/expense_manager` (real directory, not a symlink), or keep using **`extraDirs`** and update OpenClaw—do not use a symlink that escapes the workspace.
 
-`~/.openclaw/workspace/skills/expense_manager/SKILL.md`
-
-If logs show **`[tools] read failed: ENOENT ... expense_manager/SKILL.md`**, create a symlink so that path exists (pointing at this repo):
-
-```bash
-ln -sfn /absolute/path/to/openclaw-expense-manager \
-  ~/.openclaw/workspace/skills/expense_manager
-```
-
-Use the **same** absolute path you put in `extraDirs`. After that, `test -f ~/.openclaw/workspace/skills/expense_manager/SKILL.md` should succeed.
-
-**Alternative:** copy or move the whole project folder **into** `~/.openclaw/workspace/skills/expense_manager` so `SKILL.md` lives directly there (folder name must match **`expense_manager`**, not `expense-manager`).
-
-**Verify:** run `openclaw skills list` and confirm **`expense_manager`** appears with status **ready** (source `openclaw-extra` when using `extraDirs`). If you use a symlink under `workspace/skills/`, run `readlink ~/.openclaw/workspace/skills/expense_manager` — it must point at this project directory.
+**Verify:** run `openclaw skills list` and confirm **`expense_manager`** appears with status **ready** and that the log line above does **not** appear.
 
 After the skill is visible, the same agent will use the expense-manager skill (see `SKILL.md`) when you message it. You can optionally copy the contents of `SOUL.expense-example.md` into `~/.openclaw/workspace/SOUL.md` so the agent identifies as an expense-only assistant.
 
@@ -172,7 +159,7 @@ Ensure your `~/.openclaw/openclaw.json` is configured with Ollama as the model p
 }
 ```
 
-If you already have `~/.openclaw/openclaw.json`, change **`primary`** to **`ollama/kimi-k2.5:cloud`**, add the **`ollama.models`** array for **`kimi-k2.5:cloud`** as above, and keep your **`skills`**, **`channels`**, and other settings. Restart the gateway after changes (`openclaw gateway restart` or your LaunchAgent). Add the `channels` block if you still need to enable WhatsApp.
+If you already have `~/.openclaw/openclaw.json`, set **`primary`** to **`ollama/kimi-k2.5:cloud`**, add the **`ollama.models`** entry for **`kimi-k2.5:cloud`** as above, and keep your **`skills`**, **`channels`**, and other settings. Restart the gateway after changes (`openclaw gateway restart` or your LaunchAgent). Add the `channels` block if you still need to enable WhatsApp.
 
 ## Currency
 
@@ -190,9 +177,9 @@ All amounts are converted to **Indonesian Rupiah (IDR)**. You can send amounts i
 OpenClaw only appends to `expenses.csv` after the agent successfully runs `node log_expense.js`. If the LLM fails or never finishes, **no row is written** (the scripts are not the first step in the chain).
 
 1. **Check logs** — `openclaw logs --follow` (or the log file shown when the gateway starts). Look for:
-   - `[tools] read failed: ENOENT ... expense_manager/SKILL.md` — the gateway expects `~/.openclaw/workspace/skills/expense_manager/SKILL.md`. Add the symlink under **Install the Skill** (same path as `extraDirs`), or copy the project into `workspace/skills/expense_manager/`, then restart the gateway.
+   - `[tools] read failed: ENOENT ... expense_manager/SKILL.md` — ensure **`skills.load.extraDirs`** points at this repo, or copy the project into `~/.openclaw/workspace/skills/expense_manager/` (real folder, not a symlink outside the workspace), then restart the gateway.
    - `Model context window too small` — in `~/.openclaw/openclaw.json`, set `models.providers.ollama.models[]` for your agent model so **`contextWindow`** is at least **16000** (hard minimum for many setups) and preferably **≥ 32000** to avoid **`low context window ... warn<32000`**.
-   - `LLM request failed`, `fetch failed`, `network connection error` — **Ollama is not reachable** from the gateway. Start Ollama (e.g. open **Ollama.app**), then verify: `curl -s http://127.0.0.1:11434/api/tags`
+   - `LLM request failed`, `fetch failed`, `network connection error` — **Ollama is not reachable** from the process making the request. Start Ollama (e.g. open **Ollama.app**), then verify: `curl -s http://127.0.0.1:11434/api/tags`. For **`kimi-k2.5:cloud`**, ensure **`ollama signin`** completed and the machine has a stable internet path to Ollama’s cloud. In **Cursor’s CLI**, intermittent `fetch` errors sometimes improve with `"network": { "useHttp1ForAgent": true }` in `~/.cursor/cli-config.json` (restart the CLI after changing it).
    - `embedded_run_agent_end` with errors — agent run failed before tools ran.
    - WhatsApp **408** / connection lost — Web session dropped; reconnect (or wait for auto-reconnect) and resend.
 

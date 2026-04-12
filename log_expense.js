@@ -97,17 +97,19 @@ async function logExpense(item, price, date, storage = 'local') {
   appendDailyMemory(workspaceRoot, date, itemSafe, priceNum, storage);
 }
 
-// Get arguments from command line: item, price, date, [storage]
+// Get arguments from command line: item, price, [date], [storage]
 const [,, item, price, date, storage] = process.argv;
+const effectiveDate = date || new Date().toISOString().slice(0, 10);
 const storageMode = (storage || 'local').toLowerCase();
 
-if (!item || !price || !date) {
-  console.error('Usage: node log_expense.js <item> <price> <date> [storage]');
+if (!item || !price) {
+  console.error('Usage: node log_expense.js <item> <price> [date] [storage]');
+  console.error('  date: YYYY-MM-DD (defaults to today)');
   console.error('  storage: local (default) or cloud');
   process.exit(1);
 }
 
-logExpense(item, price, date, storageMode).catch((err) => {
+logExpense(item, price, effectiveDate, storageMode).catch((err) => {
   console.error('Error logging expense:', err);
   process.exit(1);
 });

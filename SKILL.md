@@ -35,11 +35,13 @@ Use this tool to extract details from a receipt image.
 
 ### Query Expenses
 Use this tool to answer historical spending questions (local CSV only).
+-   Command (for relative dates): `node query_expenses.js --relative <format>`
 -   Command: `node query_expenses.js --month <YYYY-MM>`
 -   Command: `node query_expenses.js --from <YYYY-MM-DD> --to <YYYY-MM-DD>`
 -   Command: `node query_expenses.js --summary`
 -   Returns: JSON with `total`, `count`, and `items` (or `months` + `grandTotal` for `--summary`). Paths are relative to this skill directory unless `EXPENSES_CSV_PATH` is set in `.env`.
 -   Note: Queries **local CSV only**. If the user only uses cloud storage, tell them totals are in their Google Sheet and this script does not read the sheet.
+-   Security / exec preflight: **Always** invoke Node tools directly (exactly `node <script>.js ...`). **Never** use shell chaining or syntax like `cd ...`, `&&`, `;`, pipes `|`, redirects `>`, or subshell `$()`. OpenClaw sets the tool working directory for you.
 
 ## Instructions
 
@@ -58,6 +60,23 @@ Use this tool to answer historical spending questions (local CSV only).
 -   **Multiple expenses in one message**: If the user sends multiple items in a single message (one per line, or separated by commas/semicolons), parse each expense separately and call `Log Expense` once per item. Apply the same date, currency, and storage rules to each item individually (each item may have its own date or price). After all items are logged, confirm with a single combined reply listing every item and its price. Example input: "nasi goreng 10rb\nrenang 15rb\nkopi 8rb" → call `node log_expense.js` three times, then reply once with all three confirmations.
 -   **Currency**: If the user provides an amount in a foreign currency (e.g., USD, SGD), convert it to Indonesian Rupiah (IDR) using an approximate current exchange rate (e.g., 1 USD = 16,000 IDR). Always log the amount in IDR and confirm to the user in IDR (e.g., "Logged Lunch - Rp 160.000").
 -   **Confirmation**: Always confirm to the user when the expense has been logged successfully, mentioning the item and price in Rupiah format (e.g., Rp 15.000). If they asked for cloud storage, confirm it was saved to Google Sheet; otherwise confirm it was saved to your local CSV.
--   **Expense Queries**: When the user asks about past spending ("how much last month", "what did I spend 2 months ago", "show January expenses", "total this week"), compute the date range or calendar month from **today's date**, run `Query Expenses` from this skill's directory, and reply with the **total in IDR** and a short breakdown (top items or count). Use `--month YYYY-MM` for a full calendar month; use `--from` / `--to` for arbitrary ranges (e.g. "this week"). Use `--summary` for all-time monthly rollups. For **same-day** spending only, you may first use `memory_get` on today's workspace file `memory/YYYY-MM-DD.md` (OpenClaw workspace) for a quick recap; if empty or incomplete, use `Query Expenses` on the CSV.
+-   **Expense Queries (MUST USE TOOL)**: For any question that asks for totals, transactions count, a list of transactions, or any time-based summary (e.g., \"current expense this month\", \"how much this week\", \"berapa pengeluaran bulan ini\", \"last 3 weeks\", \"2 hari terakhir\"), you **MUST** run **`Query Expenses`** first. Do **not** answer from memory or guess.
+-   **Expense Queries (reply contract)**: After a successful tool run, base your reply only on the tool JSON and include:\n+    - the resolved `period` or `from`→`to`\n+    - `total` and `count`\n+    - a short breakdown (top items or a few lines)\n+    If the tool fails or doesn't run, say you couldn't query the CSV and include the error; do **not** claim `Rp 0` unless the tool returned `count: 0`.
+-   **Relative time (critical)**:
+    - For relative time queries, do **not** guess dates or `YYYY-MM`. Use the `--relative` flag to let the script compute the dates.
+    - English phrases that mean **bulan ini / this-month**:\n+      - \"current expense this month\", \"current expenses this month\", \"check current expense this month\"\n+      - \"this month so far\", \"so far this month\", \"month to date\", \"MTD\"\n+      - \"this month's spending\"\n+      -> `node query_expenses.js --relative this-month`
+    - Bahasa phrases that mean **bulan ini / this-month**:\n+      - \"bulan ini\", \"bulan berjalan\", \"sejauh ini\", \"sampai hari ini\", \"pengeluaran bulan ini\", \"total bulan ini\", \"MTD\"\n+      -> `node query_expenses.js --relative this-month`
+    - "hari ini" / "today" -> `node query_expenses.js --relative today`
+    - "kemarin" / "yesterday" -> `node query_expenses.js --relative yesterday`
+    - "minggu ini" / "this week" -> `node query_expenses.js --relative this-week`
+    - "minggu lalu" / "last week" -> `node query_expenses.js --relative last-week`
+    - "bulan ini" / "this month" -> `node query_expenses.js --relative this-month`
+    - "bulan lalu" / "last month" -> `node query_expenses.js --relative last-month`
+    - "2 hari terakhir" / \"2 hari belakangan\" / \"last 2 days\" -> `node query_expenses.js --relative last-2-days`
+    - "3 hari lalu" / "last 3 days" -> `node query_expenses.js --relative last-3-days`
+    - "3 minggu terakhir" / \"last 3 weeks\" -> `node query_expenses.js --relative last-3-weeks`
+    - "2 minggu terakhir" / "last 2 weeks" -> `node query_expenses.js --relative last-2-weeks`
+    - "2 bulan lalu" / "last 2 months" -> `node query_expenses.js --relative last-2-months`
+-   **Tool failures**: If `Query Expenses` errors or returns non-JSON, tell the user the query failed and include the error. Do **not** claim `Rp 0` unless the tool succeeded and returned `count: 0`.
 -   **Daily Memory**: When `Log Expense` succeeds, it automatically appends one line to `memory/YYYY-MM-DD.md` under `agents.defaults.workspace` (typically `~/.openclaw/workspace/memory/`) in this format: `- Expense: <item> Rp <price> (local|cloud)`. Do not separately write, truncate, or overwrite `memory/YYYY-MM-DD.md` via generic file tools. This helps same-day recall via `memory_get` without re-reading the CSV.
 -   **Error Handling**: If a tool fails, inform the user and ask them to try again or provide details manually.
